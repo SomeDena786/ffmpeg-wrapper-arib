@@ -46,8 +46,28 @@ The child ffmpeg runs inside a Windows **Job Object** (`KILL_ON_JOB_CLOSE`) so i
 terminated together with the wrapper when Jellyfin stops/seeks — no orphaned
 processes.
 
-`ffprobe.exe` is a thin pass-through (Jellyfin derives the ffprobe path from the
-ffmpeg folder, so it must live alongside).
+### Making surround work on strict clients (Fire TV)
+
+There's a second, subtler problem. Jellyfin probes these files and sees the audio as
+**stereo**, because the real ffprobe reads the first frames — the 2.0 pre-roll. It
+then advertises *stereo* to every client. A browser tolerates getting 5.1 anyway,
+but a strict client like **Fire TV** configures its decoder for the announced stereo
+and then plays **silence** when the actual stream is 5.1.
+
+So `ffprobe.exe` here is **not** a plain pass-through. For Jellyfin's media-info
+probe (`-show_streams` + JSON) of a `.ts`/`.m2ts` file whose audio is 5.1 at the 8 s
+mark, it rewrites the primary audio stream in the probe JSON to
+`channels=6 / channel_layout=5.1`. Jellyfin then negotiates surround correctly per
+client (AAC 5.1 where the client supports it, otherwise Jellyfin's own AC3/EAC3 5.1
+transcode). All other probes (keyframe/packet, non-ts, genuinely stereo files) pass
+through untouched; on any parsing error the original probe output is emitted verbatim.
+
+> After installing/updating, **re-scan (Refresh metadata on) the affected items** so
+> Jellyfin re-runs this probe and updates its cached stream info — otherwise it keeps
+> the old "stereo" result.
+
+Building `ffprobe.exe` requires `System.Web.Extensions` (`JavaScriptSerializer`),
+referenced automatically by `build.ps1`.
 
 ## Requirements
 

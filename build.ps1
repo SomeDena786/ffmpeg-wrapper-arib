@@ -21,7 +21,8 @@ $ffprobeSrc = Join-Path $root 'src\ffprobe-wrap.cs'
 & $csc /nologo /optimize+ /target:exe /platform:x64 "/out:$ffmpegOut" "$ffmpegSrc"
 if ($LASTEXITCODE) { throw "ffmpeg.exe build failed ($LASTEXITCODE)" }
 
-& $csc /nologo /optimize+ /target:exe /platform:x64 "/out:$ffprobeOut" "$ffprobeSrc"
+# ffprobe wrapper needs System.Web.Extensions (JavaScriptSerializer) to patch JSON.
+& $csc /nologo /optimize+ /target:exe /platform:x64 /r:System.Web.Extensions.dll "/out:$ffprobeOut" "$ffprobeSrc"
 if ($LASTEXITCODE) { throw "ffprobe.exe build failed ($LASTEXITCODE)" }
 
 Write-Host "Built:"
