@@ -33,9 +33,9 @@ Which layout? It probes the audio mode at the **8-second mark** of the recording
 
 | Mode at 8 s | Output |
 |-------------|--------|
-| 5.1 (6ch)   | `-ac 6 -b:a 384k` (surround preserved) |
-| stereo / other | `-ac 2 -b:a 256k` |
-| mono        | `-ac 1 -b:a 128k` |
+| 5.1 (6ch)   | `ac3 -ac 6 -b:a 448k` (surround; see Fire TV note below) |
+| stereo / other | `aac -ac 2 -b:a 256k` |
+| mono        | `aac -ac 1 -b:a 128k` |
 
 Surround content stays surround; stereo content stays stereo — decided per file.
 
@@ -54,13 +54,29 @@ then advertises *stereo* to every client. A browser tolerates getting 5.1 anyway
 but a strict client like **Fire TV** configures its decoder for the announced stereo
 and then plays **silence** when the actual stream is 5.1.
 
-So `ffprobe.exe` here is **not** a plain pass-through. For Jellyfin's media-info
-probe (`-show_streams` + JSON) of a `.ts`/`.m2ts` file whose audio is 5.1 at the 8 s
-mark, it rewrites the primary audio stream in the probe JSON to
-`channels=6 / channel_layout=5.1`. Jellyfin then negotiates surround correctly per
-client (AAC 5.1 where the client supports it, otherwise Jellyfin's own AC3/EAC3 5.1
-transcode). All other probes (keyframe/packet, non-ts, genuinely stereo files) pass
-through untouched; on any parsing error the original probe output is emitted verbatim.
+There's a further twist for Fire TV: even when Jellyfin *knows* the audio is 5.1,
+many Fire TV devices can't decode **multichannel AAC** (they have Dolby AC3/EAC3
+decoders instead), yet the Fire TV app reports AAC-multichannel as supported — so
+Jellyfin direct-streams AAC 5.1 and Fire TV plays silence. And the server-side
+ffmpeg command is **identical** for the browser and Fire TV, so the wrapper can't
+tell them apart to send different codecs.
+
+The fix is to report the audio as **AC3 5.1** in the probe (`codec_name=ac3`,
+`channels=6`, `channel_layout=5.1`) for `.ts`/`.m2ts` whose 8 s mark is surround.
+That makes Jellyfin's per-client negotiation diverge correctly:
+
+| Client | Supports AC3? | Jellyfin decides | Result |
+|--------|---------------|------------------|--------|
+| Fire TV (→ Dolby AVR) | yes | "copy" → ffmpeg wrapper re-encodes the real AAC to **genuine AC3 5.1** | surround ✓ |
+| Browser | no | transcodes to **AAC** itself (wrapper not involved) | plays ✓ |
+
+The delivered stream always matches what the client was told (Fire TV gets real
+AC3, the browser gets real AAC) — only the probe *metadata* is adjusted. All other
+probes (keyframe/packet, non-ts, genuinely stereo files) pass through untouched; on
+any parsing error the original probe output is emitted verbatim.
+
+> Requires a Dolby-capable audio path on the Fire TV (AVR/soundbar). On a stereo-only
+> TV, set the 5.1 branch back to `aac -ac 2` instead.
 
 > After installing/updating, **re-scan (Refresh metadata on) the affected items** so
 > Jellyfin re-runs this probe and updates its cached stream info — otherwise it keeps

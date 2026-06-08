@@ -112,8 +112,16 @@ class P
 
             if (ch > 0 && ch < 6)
             {
+                // Report as AC3 5.1 (not AAC) so Jellyfin negotiates per client:
+                //   AC3-capable (Fire TV) -> copy  (ffmpeg wrapper makes real AC3)
+                //   AC3-incapable (browser) -> transcode to AAC itself
+                st["codec_name"] = "ac3";
+                st["codec_long_name"] = "ATSC A/52A (AC-3)";
                 st["channels"] = 6;
                 st["channel_layout"] = "5.1";
+                st.Remove("profile");        // "LC" is AAC-specific
+                st["codec_tag_string"] = "[0][0][0][0]";
+                st["codec_tag"] = "0x0000";
                 break;   // only the primary audio
             }
         }

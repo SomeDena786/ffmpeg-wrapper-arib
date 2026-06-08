@@ -46,14 +46,22 @@ class W
         if (ext != ".ts" && ext != ".m2ts") { Log("non-ts (" + ext + "); passthrough"); return args; }
 
         int ch = ProbeChannelsAt8s(input);
-        int ac = ch >= 6 ? 6 : (ch == 1 ? 1 : 2);     // 5.1 -> 6, mono -> 1, else stereo
-        string br = ac >= 6 ? "384k" : (ac == 1 ? "128k" : "256k");
-        Log("input=" + input + " ch@8s=" + ch + " -> -ac " + ac + " -b:a " + br);
+
+        // Surround case: the ffprobe wrapper reports these as AC3 5.1, so Jellyfin
+        // only emits "copy" for AC3-capable clients (e.g. Fire TV). Re-encode the
+        // real AAC source to genuine AC3 5.1 to match what the client was told.
+        // Non-AC3 clients (browsers) never hit copy here -- Jellyfin transcodes
+        // them to AAC itself, and this wrapper passes that through.
+        string acodec; int ac; string br;
+        if (ch >= 6)      { acodec = "ac3"; ac = 6; br = "448k"; }
+        else if (ch == 1) { acodec = "aac"; ac = 1; br = "128k"; }
+        else              { acodec = "aac"; ac = 2; br = "256k"; }
+        Log("input=" + input + " ch@8s=" + ch + " -> -codec:a " + acodec + " -ac " + ac + " -b:a " + br);
 
         args = args.Replace("-bsf:a aac_adtstoasc ", "");
         args = args.Replace("-bsf:a aac_adtstoasc", "");
         args = args.Replace("-codec:a:0 copy",
-                            "-codec:a:0 aac -ac " + ac + " -b:a " + br);
+                            "-codec:a:0 " + acodec + " -ac " + ac + " -b:a " + br);
         return args;
     }
 
